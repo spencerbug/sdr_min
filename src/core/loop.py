@@ -9,8 +9,8 @@ from typing import Dict
 import numpy as np
 
 from ..utils import PacketValidator
-from .column import ColumnConfig, ColumnSystem
-from .context import ContextConfig, ContextEncoder
+from .column import ColumnConfig, ColumnStepResult, ColumnSystem
+from .encoders import ContextConfig, ContextEncoder
 from .env_ycb import EnvConfig, YCBHabitatAdapter
 from .policy import PolicyConfig, RandomPolicy
 
@@ -34,18 +34,23 @@ def run_loop(config: LoopConfig) -> Dict[str, float]:
     validator = PacketValidator()
     env = YCBHabitatAdapter(config.env, validator, rng)
     context_encoder = ContextEncoder(config.context, validator)
-    columns = ColumnSystem(config.column, validator, rng)
+    columns = ColumnSystem(config.column, config.context, validator, rng)
     policy = RandomPolicy(config.policy, validator, rng)
 
     observation, pose, raw_context = env.reset()
     entropies = []
     peakiness_values = []
+    facet_losses = []
 
     for step in range(config.steps):
         context_packet = context_encoder.encode(raw_context)
-        belief_packet = columns.step(observation, pose, context_packet)
+        column_result: ColumnStepResult = columns.step(observation, pose, context_packet)
+        belief_packet = column_result.belief_packet
         entropies.append(belief_packet["entropy"])
         peakiness_values.append(belief_packet["peakiness"])
+        for record in column_result.facet_records:
+            if "L1" in record["losses"]:
+                facet_losses.append(record["losses"]["L1"])
         action_packet = policy.act(belief_packet)
         LOGGER.debug("step=%d action=%s entropy=%.3f", step, action_packet["action_type"], belief_packet["entropy"])
         observation, pose, raw_context = env.step(action_packet)
@@ -53,6 +58,7 @@ def run_loop(config: LoopConfig) -> Dict[str, float]:
     summary = {
         "entropy_mean": float(np.mean(entropies)) if entropies else 0.0,
         "peakiness_mean": float(np.mean(peakiness_values)) if peakiness_values else 0.0,
+        "facet_L1_mean": float(np.mean(facet_losses)) if facet_losses else 0.0,
         "steps": float(config.steps),
     }
     return summary

@@ -1,13 +1,21 @@
-"""Column module stub matching the SDR design skeleton."""
+"""Column module implementing the intra-column SDR pipeline."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List
 
 import numpy as np
 
 from ..utils import PacketValidator
+from .assoc import AssociativeConfig, AssociativeMaps
+from .belief import BeliefBuilder, BeliefConfig
+from .consensus import ConsensusConfig, ConsensusSystem
+from .encoders import ContextConfig, FeatureEncoder, FeatureEncoderConfig
+from .facet import FacetConfig, FacetSynthesizer
+from .fusion import FusionConfig, PoEFuser
+from .phase import PhaseConfig, PhaseIntegrator
+from .sensor import SensorAdapter, SensorConfig
 
 
 @dataclass
@@ -16,68 +24,101 @@ class ColumnConfig:
     feature_dim: int = 4096
     topk_phase: int = 32
     topk_feature: int = 64
+    fusion: FusionConfig = field(default_factory=FusionConfig)
+    consensus: ConsensusConfig = field(default_factory=ConsensusConfig)
+    facet: FacetConfig = field(default_factory=FacetConfig)
+
+
+@dataclass
+class ColumnStepResult:
+    belief_packet: Dict[str, object]
+    facet_records: List[Dict[str, object]]
+    consensus_weights: Dict[str, float]
 
 
 class ColumnSystem:
-    """Minimal multi-column processor with deterministic validation."""
+    """Run feature/context fusion, consensus, and belief building."""
 
-    def __init__(self, config: ColumnConfig, validator: PacketValidator, rng: np.random.Generator) -> None:
+    def __init__(
+        self,
+        config: ColumnConfig,
+        context_config: ContextConfig,
+        validator: PacketValidator,
+        rng: np.random.Generator,
+    ) -> None:
         self._config = config
         self._validator = validator
         self._rng = rng
+        self._sensor = SensorAdapter(SensorConfig(feature_dim=config.feature_dim))
+        self._feature_encoder = FeatureEncoder(
+            FeatureEncoderConfig(feature_dim=config.feature_dim, topk=config.topk_feature)
+        )
+        self._phase = PhaseIntegrator(PhaseConfig(phase_dim=config.phase_dim, topk=config.topk_phase), rng)
+        assoc_config = AssociativeConfig(
+            phase_dim=config.phase_dim,
+            feature_dim=config.feature_dim,
+            context_dim=context_config.length,
+            topk_phase=config.topk_phase,
+            topk_feature=config.topk_feature,
+        )
+        self._assoc = AssociativeMaps(assoc_config, rng)
+        self._fuser = PoEFuser(config.fusion)
+        self._consensus = ConsensusSystem(config.consensus)
+        belief_topk = min(config.topk_phase, config.consensus.shared_topk)
+        self._belief = BeliefBuilder(BeliefConfig(phase_dim=config.phase_dim, topk_phase=belief_topk), validator)
+        self._facet = FacetSynthesizer(config.facet, validator)
+
+    def reset(self, columns: List[str]) -> None:
+        self._phase.reset(columns)
 
     def step(
         self,
         observation_packet: Dict[str, object],
         pose_packet: Dict[str, object],
         context_packet: Dict[str, object],
-    ) -> Dict[str, object]:
-        per_column = {}
-        accumulated_logits = []
-        for column in observation_packet["columns"]:
-            column_id = column["column_id"]
-            logits = self._rng.normal(loc=0.0, scale=1.0, size=self._config.phase_dim)
-            accumulated_logits.append(logits)
-            g_topk = self._topk_indices(logits, self._config.topk_phase)
-            f_logits = self._rng.normal(loc=0.0, scale=1.0, size=self._config.feature_dim)
-            f_topk = self._topk_indices(f_logits, self._config.topk_feature)
-            per_column[column_id] = {
-                "g_post_logits": self._handle("g_post", column_id, self._config.phase_dim),
-                "g_sdr": {"indices": g_topk, "length": self._config.phase_dim},
-                "f_sdr": {"indices": f_topk, "length": self._config.feature_dim},
+    ) -> ColumnStepResult:
+        column_ids = [str(col["column_id"]) for col in observation_packet.get("columns", [])]
+        self._phase.ensure_columns(column_ids)
+
+        phase_outputs = self._phase.step(pose_packet)
+        feature_vectors = self._sensor.extract(observation_packet)
+        context_indices = context_packet["c_bits"]["indices"]
+        context_logits_phase = self._assoc.phase_from_context(context_indices)
+        per_column_logits: Dict[str, np.ndarray] = {}
+        per_column_sdr: Dict[str, Dict[str, Dict[str, object]]] = {}
+
+        for column in observation_packet.get("columns", []):
+            column_id = str(column["column_id"])
+            feature_dense = feature_vectors[column_id]
+            feature_sdr = self._feature_encoder.encode(feature_dense)
+            phase_output = phase_outputs.get(column_id)
+            if phase_output is None:
+                prior_logits = np.zeros(self._config.phase_dim, dtype=np.float32)
+            else:
+                prior_logits = phase_output.prior_logits
+            g_prior = prior_logits
+            g_feat = self._assoc.phase_from_features(feature_sdr["indices"])
+            g_post = self._fuser.fuse(g_prior, g_feat, context_logits_phase)
+            g_indices = self._topk_indices(g_post, self._config.topk_phase)
+            per_column_logits[column_id] = g_post
+            per_column_sdr[column_id] = {
+                "g_sdr": {"indices": g_indices, "length": self._config.phase_dim},
+                "f_sdr": feature_sdr,
             }
-        shared_logits = np.mean(np.stack(accumulated_logits, axis=0), axis=0)
-        g_star_indices = self._topk_indices(shared_logits, self._config.topk_phase)
-        entropy, peakiness = self._compute_entropy(shared_logits)
-        belief_packet = {
-            "type": "belief.v1",
-            "g_star_logits": self._handle("g_star", "shared", self._config.phase_dim),
-            "g_star_sdr": {"indices": g_star_indices, "length": self._config.phase_dim},
-            "entropy": entropy,
-            "peakiness": peakiness,
-            "per_column": per_column,
-            "c_sdr": context_packet["c_bits"],
-        }
-        self._validator.validate(belief_packet)
-        return belief_packet
+            self._phase.commit(column_id, g_post, g_indices)
+            self._assoc.update(g_indices, feature_sdr["indices"], context_indices)
+
+        shared_logits, weights = self._consensus.fuse(per_column_logits)
+        belief_packet = self._belief.build(shared_logits, per_column_logits, per_column_sdr, context_packet)
+        facet_records = self._facet.predict(belief_packet["g_star_sdr"]["indices"], observation_packet)
+        return ColumnStepResult(
+            belief_packet=belief_packet,
+            facet_records=facet_records,
+            consensus_weights=weights,
+        )
 
     def _topk_indices(self, logits: np.ndarray, k: int) -> List[int]:
-        k = min(k, logits.size)
+        k = max(1, min(k, logits.size))
         topk = np.argpartition(logits, -k)[-k:]
-        return sorted(np.asarray(topk, dtype=int).tolist())
-
-    def _handle(self, tensor_name: str, suffix: str, dim: int) -> Dict[str, object]:
-        return {
-            "dtype": "float32",
-            "shape": [dim],
-            "storage": f"shm://belief/{tensor_name}/{suffix}",
-        }
-
-    def _compute_entropy(self, logits: np.ndarray) -> Tuple[float, float]:
-        shifted = logits - logits.max()
-        exp_logits = np.exp(shifted)
-        probs = exp_logits / exp_logits.sum()
-        entropy = float(-(probs * np.log(probs + 1e-8)).sum())
-        h_max = np.log(logits.size)
-        peakiness = float((h_max - entropy) / h_max) if h_max > 0 else 0.0
-        return entropy, peakiness
+        ordered = topk[np.argsort(-logits[topk])]
+        return ordered.astype(int).tolist()

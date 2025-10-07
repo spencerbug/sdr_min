@@ -18,4 +18,5 @@ def test_loop_runs_for_ten_steps() -> None:
     summary = run_loop(config)
     assert math.isfinite(summary["entropy_mean"])
     assert math.isfinite(summary["peakiness_mean"])
+    assert math.isfinite(summary["facet_L1_mean"])
     assert summary["steps"] == float(config.steps)

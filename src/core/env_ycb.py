@@ -23,6 +23,7 @@ class EnvConfig:
     context_length: int = 1024
     dt: float = 0.05
     columns: Tuple[str, ...] = ("col0",)
+    objects: Tuple[str, ...] = ("stub_object", "alt_object")
 
 
 class YCBHabitatAdapter:
@@ -33,20 +34,30 @@ class YCBHabitatAdapter:
         self._validator = validator
         self._rng = rng
         self._tick = 0
+        self._current_object_idx = 0
+        self._last_switch = False
         self._pose: Dict[str, Tuple[float, float]] = {
             col: (float(self._rng.random()), float(self._rng.random())) for col in config.columns
         }
+        self._pose_prev: Dict[str, Tuple[float, float]] = dict(self._pose)
 
     def reset(self) -> Tuple[Dict[str, object], Dict[str, object], List[int]]:
         """Reset the environment state and return the first packets."""
 
         self._tick = 0
+        self._current_object_idx = int(self._rng.integers(len(self._config.objects)))
+        self._last_switch = False
+        self._pose_prev = dict(self._pose)
         return self._emit_packets()
 
     def step(self, _action_packet: Dict[str, object]) -> Tuple[Dict[str, object], Dict[str, object], List[int]]:
         """Advance the stub environment one tick."""
 
+        action_type = _action_packet.get("action_type", "noop")
+        params = _action_packet.get("params", {}) if isinstance(_action_packet, dict) else {}
+        self._apply_action(action_type, params)
         self._tick += 1
+        self._last_switch = action_type == "switch_object"
         return self._emit_packets()
 
     def _emit_packets(self) -> Tuple[Dict[str, object], Dict[str, object], List[int]]:
@@ -65,6 +76,7 @@ class YCBHabitatAdapter:
             delta = self._rng.normal(scale=0.01, size=2)
             u = float((u_prev + delta[0]) % 1.0)
             v = float((v_prev + delta[1]) % 1.0)
+            self._pose_prev[column_id] = (u_prev, v_prev)
             self._pose[column_id] = (u, v)
             columns_payload.append(
                 {
@@ -88,7 +100,7 @@ class YCBHabitatAdapter:
             "type": "observation.v1",
             "columns": columns_payload,
             "global_meta": {
-                "object_id": "stub_object",
+                "object_id": self._config.objects[self._current_object_idx],
                 "tick": self._tick,
                 "camera_intr": [575.8, 575.8, 320.0, 240.0],
             },
@@ -97,12 +109,14 @@ class YCBHabitatAdapter:
 
     def _make_pose_packet(self) -> Dict[str, object]:
         pose_entries = []
-        for column_id, (u, v) in self._pose.items():
+        for column_id in self._pose:
+            u, v = self._pose[column_id]
+            u_prev, v_prev = self._pose_prev[column_id]
             pose_entries.append(
                 {
                     "column_id": column_id,
                     "pose_t": {"u": u, "v": v},
-                    "pose_tm1": {"u": u, "v": v},
+                    "pose_tm1": {"u": u_prev, "v": v_prev},
                 }
             )
         return {
@@ -112,7 +126,32 @@ class YCBHabitatAdapter:
         }
 
     def _sample_context_indices(self) -> List[int]:
+        metronome_even_bit = 0
+        metronome_odd_bit = 2
+        switch_bit = 1
+        indices = {metronome_even_bit if self._tick % 2 == 0 else metronome_odd_bit}
+        if self._last_switch:
+            indices.add(switch_bit)
         active_k = max(1, int(0.02 * self._config.context_length))
-        return sorted(
-            self._rng.choice(self._config.context_length, size=active_k, replace=False).astype(int).tolist()
-        )
+        extras_needed = max(0, active_k - len(indices))
+        if extras_needed > 0:
+            candidates = self._rng.choice(self._config.context_length, size=extras_needed, replace=False).astype(int)
+            indices.update(int(idx) for idx in candidates)
+        return sorted(indices)
+
+    def _apply_action(self, action_type: str, params: Dict[str, object]) -> None:
+        if action_type == "move":
+            dx = float(params.get("dx", 0.0))
+            dy = float(params.get("dy", 0.0))
+            for column_id, (u, v) in self._pose.items():
+                self._pose_prev[column_id] = (u, v)
+                self._pose[column_id] = ((u + dx) % 1.0, (v + dy) % 1.0)
+        elif action_type == "jump_to":
+            target_u = float(params.get("u", self._rng.random()))
+            target_v = float(params.get("v", self._rng.random()))
+            for column_id in self._pose:
+                self._pose_prev[column_id] = self._pose[column_id]
+                self._pose[column_id] = (target_u % 1.0, target_v % 1.0)
+        elif action_type == "switch_object":
+            self._current_object_idx = (self._current_object_idx + 1) % len(self._config.objects)
+        # noop and unknown actions keep state unchanged
