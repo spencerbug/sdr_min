@@ -1,0 +1,14 @@
+name: sdr-loop
+channels:
+  - aihabitat
+  - conda-forge
+dependencies:
+  - python=3.9.*
+  - numpy
+  - scipy
+  - jsonschema
+  - pytest
+  - matplotlib
+  - ipykernel
+  - pip
+  - habitat-sim

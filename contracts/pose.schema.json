@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PosePacket",
+  "type": "object",
+  "required": ["type", "per_column", "dt"],
+  "properties": {
+    "type": { "const": "pose.v1" },
+    "per_column": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["column_id", "pose_t", "pose_tm1"],
+        "properties": {
+          "column_id": { "type": "string" },
+          "pose_t": {
+            "type": "object",
+            "required": ["u", "v"],
+            "properties": {
+              "u": { "type": "number" },
+              "v": { "type": "number" }
+            }
+          },
+          "pose_tm1": {
+            "type": "object",
+            "required": ["u", "v"],
+            "properties": {
+              "u": { "type": "number" },
+              "v": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "dt": { "type": "number", "exclusiveMinimum": 0 }
+  },
+  "additionalProperties": false
+}

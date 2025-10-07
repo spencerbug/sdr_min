@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActionMessage",
+  "type": "object",
+  "required": ["type", "action_type", "params"],
+  "properties": {
+    "type": { "const": "action.v1" },
+    "action_type": { "enum": ["move", "switch_object", "jump_to", "noop"] },
+    "params": { "type": "object" },
+    "intent_bits": {
+      "type": "object",
+      "required": ["indices", "length"],
+      "properties": {
+        "indices": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "uniqueItems": true
+        },
+        "length": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

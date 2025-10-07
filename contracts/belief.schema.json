@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BeliefPacket",
+  "type": "object",
+  "required": [
+    "type",
+    "g_star_logits",
+    "g_star_sdr",
+    "per_column",
+    "entropy",
+    "peakiness",
+    "c_sdr"
+  ],
+  "properties": {
+    "type": { "const": "belief.v1" },
+    "g_star_logits": {
+      "type": "object",
+      "required": ["dtype", "shape", "storage"],
+      "properties": {
+        "dtype": { "type": "string" },
+        "shape": { "type": "array", "items": { "type": "integer" } },
+        "storage": { "type": "string" }
+      }
+    },
+    "g_star_sdr": {
+      "type": "object",
+      "required": ["indices", "length"],
+      "properties": {
+        "indices": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "uniqueItems": true
+        },
+        "length": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "entropy": { "type": "number" },
+    "peakiness": { "type": "number" },
+    "per_column": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["g_post_logits", "g_sdr", "f_sdr"],
+        "properties": {
+          "g_post_logits": {
+            "type": "object",
+            "required": ["dtype", "shape", "storage"],
+            "properties": {
+              "dtype": { "type": "string" },
+              "shape": { "type": "array", "items": { "type": "integer" } },
+              "storage": { "type": "string" }
+            }
+          },
+          "g_sdr": {
+            "type": "object",
+            "required": ["indices", "length"],
+            "properties": {
+              "indices": {
+                "type": "array",
+                "items": { "type": "integer", "minimum": 0 },
+                "uniqueItems": true
+              },
+              "length": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "f_sdr": {
+            "type": "object",
+            "required": ["indices", "length"],
+            "properties": {
+              "indices": {
+                "type": "array",
+                "items": { "type": "integer", "minimum": 0 },
+                "uniqueItems": true
+              },
+              "length": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "c_sdr": {
+      "type": "object",
+      "required": ["indices", "length"],
+      "properties": {
+        "indices": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "uniqueItems": true
+        },
+        "length": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

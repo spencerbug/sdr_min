@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EvalRecord",
+  "type": "object",
+  "required": ["type", "episode_id", "metrics"],
+  "properties": {
+    "type": { "const": "eval.v1" },
+    "episode_id": { "type": "string" },
+    "metrics": { "type": "object" },
+    "series": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["dtype", "shape", "storage"],
+        "properties": {
+          "dtype": { "type": "string" },
+          "shape": { "type": "array", "items": { "type": "integer" } },
+          "storage": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

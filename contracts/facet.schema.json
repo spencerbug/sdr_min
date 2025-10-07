@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FacetRecord",
+  "type": "object",
+  "required": ["type", "phase_idx", "pred", "gt", "losses"],
+  "properties": {
+    "type": { "const": "facet.v1" },
+    "phase_idx": { "type": "integer", "minimum": 0 },
+    "coords_uv": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "pred": {
+      "type": "object",
+      "required": ["dtype", "shape", "storage"],
+      "properties": {
+        "dtype": { "type": "string" },
+        "shape": { "type": "array", "items": { "type": "integer" } },
+        "storage": { "type": "string" }
+      }
+    },
+    "gt": {
+      "type": "object",
+      "required": ["dtype", "shape", "storage"],
+      "properties": {
+        "dtype": { "type": "string" },
+        "shape": { "type": "array", "items": { "type": "integer" } },
+        "storage": { "type": "string" }
+      }
+    },
+    "losses": {
+      "type": "object",
+      "properties": {
+        "L1": { "type": "number" },
+        "PSNR": { "type": "number" }
+      },
+      "additionalProperties": { "type": ["number", "integer", "string", "boolean"] }
+    }
+  },
+  "additionalProperties": false
+}

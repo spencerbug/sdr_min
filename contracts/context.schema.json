@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ContextPacket",
+  "type": "object",
+  "required": ["type", "c_bits"],
+  "properties": {
+    "type": { "const": "context.v1" },
+    "c_bits": {
+      "type": "object",
+      "required": ["indices", "length"],
+      "properties": {
+        "indices": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "uniqueItems": true
+        },
+        "length": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "annotations": { "type": "object" }
+  },
+  "additionalProperties": false
+}
