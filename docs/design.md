@@ -6,7 +6,7 @@ A compact blueprint for a from-scratch SDR system that runs inside a simple YCB-
 
 1. Load experiment config
 2. YCB Habitat spawns a random object at a random view
-3. A column (or multiple) looks around on a 2D torus/chart (u,v)
+3. A column (or multiple) looks around on a 2D torus/chart $(u,v)$
 4. Continue exploring or switch objects
 5. Reconstruct a local **2.5D facet** via counterfactual completion
 6. Compare predicted facet(s) to sensor renderings / ground-truth meshes
@@ -59,29 +59,29 @@ sdr_min/
 
 ### Feature SDRs
 
-* Dim. (D), binary, (k \approx 0.02D) active; (f_{\text{SDR}}\in{0,1}^D).
+* Dim. $D$, binary, $k \approx 0.02D$ active; $f_{\text{SDR}}\in\{0,1\}^D$.
 
 ### Phase SDRs (allocentric)
 
-* (M) grid modules, module (m) has (B_m) cells, total (P=\sum_m B_m).
-* Continuous phase (\boldsymbol\phi_m\in[0,1)^2); discretized to a bump per module.
-* (g_{\text{SDR}}\in{0,1}^P) is module-wise Top-K concatenation.
+* $M$ grid modules, module $m$ has $B_m$ cells, total $P=\sum_m B_m$.
+* Continuous phase $\boldsymbol\phi_m\in[0,1)^2$; discretized to a bump per module.
+* $g_{\text{SDR}}\in\{0,1\}^P$ is module-wise Top-K concatenation.
 
 ### Context SDRs
 
-* Dim. (C), (k_c \approx 0.02C) active; (c_{\text{SDR}}\in{0,1}^C).
+* Dim. $C$, $k_c \approx 0.02C$ active; $c_{\text{SDR}}\in\{0,1\}^C$.
 * Encodes metronome/tempo, intent, room/task, head direction, rate control, etc.
 
 ### Associative Maps (sparse, row-Top-K)
 
-* (A_{FP}\in\mathbb{R}^{P\times D}), (A_{PF}\in\mathbb{R}^{D\times P}),
-  (A_{PP}\in\mathbb{R}^{P\times P}), (A_{FF}\in\mathbb{R}^{D\times D}),
-  (A_{CP}\in\mathbb{R}^{P\times C}), (A_{CF}\in\mathbb{R}^{D\times C}).
+* $A_{FP}\in\mathbb{R}^{P\times D}$, $A_{PF}\in\mathbb{R}^{D\times P}$,
+  $A_{PP}\in\mathbb{R}^{P\times P}$, $A_{FF}\in\mathbb{R}^{D\times D}$,
+  $A_{CP}\in\mathbb{R}^{P\times C}$, $A_{CF}\in\mathbb{R}^{D\times C}$.
 
 **Hebbian update (binary events) with decay**
-[
-A_{ij} \leftarrow (1-\gamma),A_{ij} + \eta, x_i, y_j
-]
+$$
+A_{ij} \leftarrow (1-\gamma)A_{ij} + \eta x_i y_j
+$$
 Apply **row-wise Top-(K)** pruning after each update.
 
 ---
@@ -89,12 +89,12 @@ Apply **row-wise Top-(K)** pruning after each update.
 ## Path Integration (grid-module kinematics)
 
 For module (m):
-[
-\boldsymbol\phi_m \leftarrow (\boldsymbol\phi_m + R_m S_m, \mathbf{v}*t, \Delta t)\bmod 1
-]
-[
-g*{\text{SDR}}=\bigoplus_{m=1}^M \text{TopK}_m!\big(\text{bump}(\boldsymbol\phi_m)\big)
-]
+$$
+\boldsymbol{\phi}_m \leftarrow (\boldsymbol{\phi}_m + R_m S_m \, \mathbf{v}_t \, \Delta t) \bmod 1
+$$
+$$
+g_{\text{SDR}} = \bigoplus_{m=1}^M \text{TopK}_m\big(\text{bump}(\boldsymbol{\phi}_m)\big)
+$$
 
 **Pseudocode**
 
@@ -110,45 +110,46 @@ g_sdr = concat({g_m})
 ## Intra-Column Pipeline (with Context)
 
 1. **Encode features**
-   [
-   f^{(c)}_{\text{SDR}}=\mathrm{Encoder}^{(c)}(x^{(c)}_t)
-   ]
+   $$
+   f^{(c)}_{\text{SDR}} = \mathrm{Encoder}^{(c)}(x^{(c)}_t)
+   $$
 
 2. **Motion prior**
-   [
-   g^{(c)}*{\text{prior}}=A^{(c)}*{PP}, g^{(c)}_{\text{SDR,prev}}
-   ]
+   $$
+   g^{(c)}_{\text{prior}} = A^{(c)}_{PP} g^{(c)}_{\text{SDR,prev}}
+   $$
 
 3. **Landmark evidence**
-   [
-   g^{(c)}*{\text{feat}}=A^{(c)}*{FP}, f^{(c)}_{\text{SDR}}
-   ]
+   $$
+   g^{(c)}_{\text{feat}} = A^{(c)}_{FP} f^{(c)}_{\text{SDR}}
+   $$
 
 4. **Context prior**
-   [
-   g^{(c)}*{\text{ctx}}=A^{(c)}*{CP}, c_{\text{SDR}},\qquad
-   \hat f^{(c)}*{\text{ctx}}=A^{(c)}*{CF}, c_{\text{SDR}}
-   ]
+   $$
+   g^{(c)}_{\text{ctx}} = A^{(c)}_{CP} c_{\text{SDR}}, \qquad
+   \hat f^{(c)}_{\text{ctx}} = A^{(c)}_{CF} c_{\text{SDR}}
+   $$
 
 5. **Product-of-experts fusion**
-   [
-   g^{(c)}*{\text{post}}=\alpha, g^{(c)}*{\text{prior}}+\beta, g^{(c)}*{\text{feat}}+\beta_c, g^{(c)}*{\text{ctx}}
-   ]
-   [
-   g^{(c)}_{\text{SDR}}=\text{TopK}*g(\text{clip}(g^{(c)}*{\text{post}}))
-   ]
+   $$
+   g^{(c)}_{\text{post}} = \alpha g^{(c)}_{\text{prior}} + \beta g^{(c)}_{\text{feat}} + \beta_c g^{(c)}_{\text{ctx}}
+   $$
+   $$
+   g^{(c)}_{\text{SDR}} = \text{TopK}_g(\text{clip}(g^{(c)}_{\text{post}}))
+   $$
 
 6. **Completion (context-biased)**
-   [
-   \hat f^{(c)} = A^{(c)}*{PF}, g^{(c)}*{\text{SDR}} + \mu_c, \hat f^{(c)}*{\text{ctx}}
-   \quad\Rightarrow\quad
-   \hat f^{(c)}*{\text{SDR}}=\text{TopK}_f(\hat f^{(c)})
-   ]
+   $$
+   \hat f^{(c)} = A^{(c)}_{PF} g^{(c)}_{\text{SDR}} + \mu_c \hat f^{(c)}_{\text{ctx}}
+   $$
+   $$
+   \hat f^{(c)}_{\text{SDR}} = \text{TopK}_f(\hat f^{(c)})
+   $$
 
 7. **Optional blend**
-   [
-   f^{(c)}*{\text{next}}=\text{TopK}*f(\lambda f^{(c)}*{\text{SDR}}+\mu, \hat f^{(c)}*{\text{SDR}})
-   ]
+   $$
+   f^{(c)}_{\text{next}} = \text{TopK}_f\big(\lambda f^{(c)}_{\text{SDR}} + \mu \hat f^{(c)}_{\text{SDR}}\big)
+   $$
 
 **Pseudocode**
 
@@ -170,36 +171,36 @@ f_hat_sdr[c] = topk_f(f_hat[c])
 ## Multi-Column Consensus (PoE + entropy weights)
 
 Local logits (already include context):
-[
-\tilde g^{(c)}=\alpha A_{PP}^{(c)} g_{\text{prev}}^{(c)}+\beta A_{FP}^{(c)} f^{(c)}+\beta_c A_{CP}^{(c)} c
-]
+$$
+   ilde g^{(c)} = \alpha A_{PP}^{(c)} g_{\text{prev}}^{(c)} + \beta A_{FP}^{(c)} f^{(c)} + \beta_c A_{CP}^{(c)} c
+$$
 
 Shared product-of-experts:
-[
-g^* = \gamma, g_{\text{PI}} + \sum_c w_c, \Pi^{(c\to *)}(\tilde g^{(c)}) + \gamma_c, \bar A_{CP}, c
-]
-[
-w_c \propto \exp{-\tau, H(\tilde g^{(c)})},\quad g^*_{\text{SDR}}=\text{TopK}_g(\text{clip}(g^*))
-]
+$$
+g^* = \gamma g_{\text{PI}} + \sum_c w_c \, \Pi^{(c\to *)}(\tilde g^{(c)}) + \gamma_c \bar A_{CP} c
+$$
+$$
+w_c \propto \exp\big(-\tau H(\tilde g^{(c)})\big), \quad g^*_{\text{SDR}} = \text{TopK}_g(\text{clip}(g^*))
+$$
 
 Feedback:
-[
-g^{(c)} \leftarrow \text{TopK}*g!\big(\rho,\Pi^{(c\to *)}(g^{(c)})+\kappa,\Pi^{(*\to c)}(g^*)\big)
-]
-[
-f^{(c)} \leftarrow \text{TopK}*f!\big(\lambda f^{(c)} + \mu (A*{PF}^{(c)} g^{(c)}) + \nu (A*{FF}^{(c)} f^{(c)}) + \mu_c A_{CF}^{(c)} c\big)
-]
+$$
+g^{(c)} \leftarrow \text{TopK}_g\big(\rho \, \Pi^{(c\to *)}(g^{(c)}) + \kappa \, \Pi^{(*\to c)}(g^*)\big)
+$$
+$$
+f^{(c)} \leftarrow \text{TopK}_f\big(\lambda f^{(c)} + \mu (A_{PF}^{(c)} g^{(c)}) + \nu (A_{FF}^{(c)} f^{(c)}) + \mu_c A_{CF}^{(c)} c\big)
+$$
 
 ---
 
 ## YCB-Habitat Environment (from scratch)
 
-**Agent chart:** 2D torus coordinates ((u,v)\in[0,1)^2) per column.
-**Observation:** cropped RGB-D patch(s) at current ((u,v)) on the object’s surface chart (or camera orbit with normalized spherical → chart mapping).
-**Context bits:** metronome (tick parity), object-switch pulse, optional intent bits from policy, room/task ID if applicable.
-**Actions:** `move(dx, dy)`, `switch_object`, `jump_to(u,v)`, `noop`.
-**Pose:** previous and current ((u,v)) to derive (\mathbf{v}_t).
-**Facet supervision:** (a) GT local surface from mesh render or depth; (b) predicted counterfactual facet from SDR completion; compare via 2.5D losses.
+* **Agent chart:** 2D torus coordinates $(u,v)\in[0,1)^2$ per column.
+* **Observation:** cropped RGB-D patch(s) at current $(u,v)$ on the object’s surface chart (or camera orbit with normalized spherical → chart mapping).
+* **Context bits:** metronome (tick parity), object-switch pulse, optional intent bits from policy, room/task ID if applicable.
+* **Actions:** `move(dx, dy)`, `switch_object`, `jump_to(u,v)`, `noop`.
+* **Pose:** previous and current $(u,v)$ to derive $\mathbf{v}_t$.
+* **Facet supervision:** (a) GT local surface from mesh render or depth; (b) predicted counterfactual facet from SDR completion; compare via 2.5D losses.
 
 **Loop (single episode)**
 
@@ -232,37 +233,37 @@ for t in range(T):
 
 **Representation:** Small fixed-res local height map or depth patch around a candidate allocentric phase cell (j):
 
-* Facet (F(j) \in \mathbb{R}^{H_f\times W_f}) (depth or signed distance), plus optional normal map (N(j)).
-* A learned/static **FeaturePrototypeBank** maps feature SDR indices (\hat f_{\text{SDR}}) to primitive facets (or a linear decoder that “blits” prototypes).
+* Facet $F(j) \in \mathbb{R}^{H_f\times W_f}$ (depth or signed distance), plus optional normal map $N(j)$.
+* A learned/static **FeaturePrototypeBank** maps feature SDR indices $\hat f_{\text{SDR}}$ to primitive facets (or a linear decoder that “blits” prototypes).
 
 **Counterfactual synthesis at shared hypothesis (j):**
-[
-\hat f^{*}(j) = \sum_c w_c\big(A^{(c)}*{PF}, e_j + \mu_c A^{(c)}*{CF} c\big)
-\Rightarrow \hat F(j) = \text{decode_facet}(\text{TopK}_f(\hat f^{*}(j)))
-]
+$$
+\hat f^{*}(j) = \sum_c w_c\big(A_{PF}^{(c)} e_j + \mu_c A_{CF}^{(c)} c\big)
+\Rightarrow \hat F(j) = \text{decode\_facet}(\text{TopK}_f(\hat f^{*}(j)))
+$$
 
 **Comparison to rendered ground truth (same viewpoint or canonicalized):**
 
-* **Depth loss:** ( \mathcal{L}*D = | \hat F - F*{\text{GT}} |_1 ) on valid mask
-* **Normal loss (optional):** ( \mathcal{L}*N = 1 - \langle \hat N, N*{\text{GT}} \rangle )
+* **Depth loss:** $\mathcal{L}_D = \lvert \hat F - F_{\text{GT}} \rvert_1$ on valid mask
+* **Normal loss (optional):** $\mathcal{L}_N = 1 - \langle \hat N, N_{\text{GT}} \rangle$
 * **Chamfer (optional):** between back-projected point sets.
-* **Peakiness/entropy gating:** only evaluate where (g^*) is sufficiently peaky.
+* **Peakiness/entropy gating:** only evaluate where $g^*$ is sufficiently peaky.
 
 ---
 
 ## Learning
 
 **Per column (binary events):**
-[
+$$
 \begin{aligned}
-A_{FP}&\leftarrow(1-\gamma_{fp})A_{FP}+\eta_{fp}, f, g^\top\
-A_{PF}&\leftarrow(1-\gamma_{pf})A_{PF}+\eta_{pf}, g, f^\top\
-A_{PP}&\leftarrow(1-\gamma_{pp})A_{PP}+\eta_{pp}, g_{\text{prev}}, g^\top\
-A_{FF}&\leftarrow(1-\gamma_{ff})A_{FF}+\eta_{ff}, f_{\text{prev}}, f^\top\
-A_{CP}&\leftarrow(1-\gamma_{cp})A_{CP}+\eta_{cp}, c, g^\top\
-A_{CF}&\leftarrow(1-\gamma_{cf})A_{CF}+\eta_{cf}, c, f^\top
+A_{FP}&\leftarrow(1-\gamma_{fp})A_{FP}+\eta_{fp} f g^\top\\
+A_{PF}&\leftarrow(1-\gamma_{pf})A_{PF}+\eta_{pf} g f^\top\\
+A_{PP}&\leftarrow(1-\gamma_{pp})A_{PP}+\eta_{pp} g_{\text{prev}} g^\top\\
+A_{FF}&\leftarrow(1-\gamma_{ff})A_{FF}+\eta_{ff} f_{\text{prev}} f^\top\\
+A_{CP}&\leftarrow(1-\gamma_{cp})A_{CP}+\eta_{cp} c g^\top\\
+A_{CF}&\leftarrow(1-\gamma_{cf})A_{CF}+\eta_{cf} c f^\top
 \end{aligned}
-]
+$$
 Row-Top-(K) prune each map after update.
 
 ---
@@ -401,7 +402,7 @@ Each experiment is a <30-line config and a call to `examples/ycb_minimal.py`.
 
 ## Metrics
 
-* **Entropy** (H) of shared logits; **Peakiness** ( (H_{\max}-H)/H_{\max}\in[0,1] ).
+* **Entropy** $H$ of shared logits; **Peakiness** $\frac{H_{\max}-H}{H_{\max}}\in[0,1]$.
 * **Localization:** phase index accuracy vs GT (synthetic).
 * **Facet quality:** Depth L1, PSNR, (optional) normal cos, Chamfer.
 * **Coverage:** fraction of phase cells visited/learned (bins hit).
@@ -411,10 +412,10 @@ Each experiment is a <30-line config and a call to `examples/ycb_minimal.py`.
 
 ## Defaults (stable & safe)
 
-* (K_g \approx 2%) per module, (K_f \approx 2%); (K_{CP},K_{CF}\in[8,32]).
-* Decays (\gamma_{\bullet}\in[5!\times!10^{-4},10^{-3}]).
-* Clip logits to (\pm 12) before Top-K.
-* Entropy temperature (\tau\in[1,3]) for consensus weights.
+* $K_g \approx 2\%$ per module, $K_f \approx 2\%$; $K_{CP},K_{CF}\in[8,32]$.
+* Decays $\gamma_{\bullet}\in[5!\times!10^{-4},10^{-3}]$.
+* Clip logits to $\pm 12$ before Top-K.
+* Entropy temperature $\tau\in[1,3]$ for consensus weights.
 
 ---
 
@@ -422,18 +423,17 @@ Each experiment is a <30-line config and a call to `examples/ycb_minimal.py`.
 
 * **`test_loop_smoke.py`** — 100 steps deterministically; packets validate; entropy finite.
 * **`test_assoc_hebbian.py`** — toy co-activation strengthens correct rows; row-Top-K holds.
-* **`test_consensus_ctx.py`** — context prior shifts (g^*) predictably; shared entropy reduces vs per-column.
+* **`test_consensus_ctx.py`** — context prior shifts ($g^*$) predictably; shared entropy reduces vs per-column.
 * **`test_facet_recon.py`** — counterfactual facet PSNR improves after learning on a small suite of views.
 * **`test_packets_schema.py`** — JSON validation for all packets; unknown fields rejected.
 * **`test_pi_wraparound.py`** — torus shortest-delta correctness on edge cases.
 
 ---
 
-## Why this shape works
+## Why this design works
 
 * **No nested config labyrinths** — Python *is* the wiring; packets are the contracts.
 * **PoE everywhere** — clean additivity of priors/evidence; easy ablations.
 * **Context as a bus** — a small, explicit bias path (CP/CF), not a new subsystem.
 * **2.5D facets** — concrete counterfactuals you can render and compare; great for tests and demos.
 
-If you want, I can generate `PACKETS.md` with JSON snippets and the schema stubs next so you can paste them straight into `contracts/`.
