@@ -1,4 +1,3 @@
-Here’s a draft of a **style.md** you could drop straight into a repo. It’s written as a paradigm/style document for purpose-built, AI-maintainable, well-tested, concise, human-readable software.
 
 ---
 
@@ -35,6 +34,7 @@ This document describes the style and principles for writing software in this re
   tests/           # unit tests, golden snapshots
   docs/            # README, PACKETS.md, DESIGN.md
   ```
+  > Current status: `examples/` is reserved for the upcoming `ycb_minimal.py` loop; until it lands, `main.py` + `tests/test_loop_smoke.py` act as the executable reference.
 * One **golden-path example** showing end-to-end loop must always work (`python examples/minimal_loop.py`).
 
 ---

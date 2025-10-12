@@ -162,6 +162,16 @@ Sparse binary control bus driving priors and gating learning.
 
 ---
 
+    **Scenario-specific sources**
+
+    * **Examiner** — morphological + non-morphological descriptors of the current object and the switch pulse bit.
+    * **Explorer** — Examiner bits plus head-direction bins, motion-rate flags, intent toggles, and metronome clocks.
+    * **Goalseeker** *(planned)* — Explorer bits plus reward-state encoding (recent reward sign/magnitude, goal-progress buckets).
+
+    All variants share the same sparse structure; only the active indices differ.
+
+    ---
+
 ## 3) PosePacket
 
 For PI velocity derivation on a unit torus.
