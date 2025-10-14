@@ -11,6 +11,7 @@ from ..utils import PacketValidator
 from .assoc import AssociativeConfig, AssociativeMaps
 from .belief import BeliefBuilder, BeliefConfig
 from .consensus import ConsensusConfig, ConsensusSystem
+from .context_gates import ContextGateConfig, ContextGates
 from .encoders import ContextConfig, FeatureEncoder, FeatureEncoderConfig
 from .facet import FacetConfig, FacetSynthesizer
 from .fusion import FusionConfig, PoEFuser
@@ -62,6 +63,7 @@ class ColumnSystem:
             topk_feature=config.topk_feature,
         )
         self._assoc = AssociativeMaps(assoc_config, rng)
+        self._context_gates = ContextGates(ContextGateConfig(length=context_config.length))
         self._fuser = PoEFuser(config.fusion)
         self._consensus = ConsensusSystem(config.consensus)
         belief_topk = min(config.topk_phase, config.consensus.shared_topk)
@@ -82,8 +84,11 @@ class ColumnSystem:
 
         phase_outputs = self._phase.step(pose_packet)
         feature_vectors = self._sensor.extract(observation_packet)
-        context_indices = context_packet["c_bits"]["indices"]
-        context_logits_phase = self._assoc.phase_from_context(context_indices)
+        c_bits = context_packet.get("c_bits", {})
+        context_indices = c_bits.get("indices", [])
+        gains = self._context_gates.update(c_bits)
+        scaled_context_indices = self._context_gates.scale_indices(gains, context_indices)
+        context_logits_phase = self._assoc.phase_from_context(scaled_context_indices)
         per_column_logits: Dict[str, np.ndarray] = {}
         per_column_sdr: Dict[str, Dict[str, Dict[str, object]]] = {}
 
@@ -106,7 +111,7 @@ class ColumnSystem:
                 "f_sdr": feature_sdr,
             }
             self._phase.commit(column_id, g_post, g_indices)
-            self._assoc.update(g_indices, feature_sdr["indices"], context_indices)
+            self._assoc.update(g_indices, feature_sdr["indices"], scaled_context_indices)
 
         shared_logits, weights = self._consensus.fuse(per_column_logits)
         belief_packet = self._belief.build(shared_logits, per_column_logits, per_column_sdr, context_packet)
