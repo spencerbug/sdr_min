@@ -90,6 +90,7 @@ We maintain 2D phase states per column; each column also commands its own 2D mot
 * **Phase input**: $(v_u, v_v)$ pan/tilt velocity derived from torus deltas.
 * **Phase output**: incremental $(\Delta u, \Delta v)$ for the camera chart.
 * **Context**: morphological + non-morphological object descriptors, switch pulse, timing/metronome, optional intent bits.
+* **Gating scope**: the launch build fixes $G_c=\mathbf{1}$ (no adaptive gating); the Examiner demo only exercises static priors and will graduate to learned gates once multi-column scenarios arrive.
 
 ### Explorer — Two Columns (Locomotion + Vision)
 
@@ -170,6 +171,7 @@ g_sdr = concat({g_m})
    g^{(c)}_{\text{ctx}} = \mathrm{Assoc.phase\_from\_context}(G_c \odot c_{\text{SDR}}), \qquad
    \hat f^{(c)}_{\text{ctx}} = \mathrm{Assoc.feature\_from\_context}(G_c \odot c_{\text{SDR}})
    $$
+   *Implementation note:* ship the first Examiner demo with $G_c=\mathbf{1}$ (static scaling). Adaptive gate updates remain a planned enhancement for multi-column experiments.
 
 5. **Product-of-experts fusion**
    $$
@@ -376,6 +378,7 @@ for step in range(cfg.steps):
    features = sensor.to_features(obs)
    context_sdr = encoders.context(ctx)
    G_c = context_gates.update(context_sdr, belief_entropy=None)
+   # Examiner demo fallback: replace with G_c = ones_like(context_sdr) until adaptive gates ship
 
    column_logits = {}
    column_packets = {}
