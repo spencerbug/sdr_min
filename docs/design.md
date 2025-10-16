@@ -422,36 +422,49 @@ The gate module keeps slice gains $G_c$ near unity; slices that reduce shared en
 
 ## Experiments
 
-**E0 — Smoke (single column, FP only)**
+### Examiner — Single Column Baseline
 
-* Goal: loop stability, sparsity sanity.
-* Metric: entropy↓ over time on static view; row-Top-K bounded.
+* **Setup**: single YCB object on the orbit chart, one vision column, static context gates ($G_c=\mathbf{1}$). Action policy stays entropy-driven with occasional `switch_object` events to stress the contract.
+* **What to measure**:
+   * Entropy and peakiness trajectories while the column explores a fixed object.
+   * Row-Top-K bounds on associative maps to ensure sparsity stays within 2–3%.
+   * Counterfactual facet losses (depth L1 / PSNR) at the top shared phases.
+   * Action counts (move vs switch vs jump) to verify entropy thresholds.
+* **Expected behaviour**:
+   * Entropy should decline over ~50–100 steps as the column re-observes familiar views.
+   * Row-Top-K never exceeds configured limits; sparse maps converge.
+   * Facet losses plateau at a low but non-zero value because the current decoder is synthetic.
+   * Switches happen rarely (only when entropy exceeds the documented threshold).
 
-**E1 — Motion prior (PP)**
+### Explorer — Two Columns with Shared Context (future milestone)
 
-* Add PI + (A_{PP}).
-* Metric: localization error on synthetic trajectory, entropy vs speed.
+* **Setup**: locomotion + vision columns operating in a small indoor layout with two objects. Shared context bits include head-direction and motion-rate; adaptive gating remains disabled until the Examiner stack is fully validated.
+* **What to measure**:
+   * Per-column vs shared entropy to confirm consensus improves certainty.
+   * Cross-column influence: how often locomotion context bits modulate vision actions (e.g. dwell vs scan).
+   * Safety metrics: collision counts, velocity clamps, and exploratory coverage of the chart.
+   * Potential energy in the phase integrators (Top-K stability under continuous motion).
+* **Expected behaviour**:
+   * Shared entropy remains lower than either column individually once both streams are active.
+   * Locomotion proposals avoid collisions and slow down when vision entropy is high (via context cues).
+   * Coverage of the phase chart grows steadily; consensus weights oscillate but remain stable.
+   * Logging shows coordinated ActionSet outputs with balanced weights.
 
-**E2 — Multi-column consensus**
+### Goalseeker — Reward-Oriented Control (planned extension)
 
-* Two columns (different view crops) of same object.
-* Metric: shared entropy < per-column average; top-k phase stability.
+* **Setup**: multi-effector scene (e.g., 2–3 arm joints) with reward bits injected into the context SDR. Policies compute joint moves from Jacobian-transformed gradients. Environment emits sparse rewards when a target descriptor is matched.
+* **What to measure**:
+   * Blend of entropy reduction and reward accumulation across episodes.
+   * Joint command magnitudes vs torque/velocity limits to ensure physical plausibility.
+   * Goal progress signals (from context) and how they interact with adaptive gates once implemented.
+   * Facet reconstructions in goal states to inspect whether desired objects are represented sharply.
+* **Expected behaviour**:
+   * Entropy does not necessarily converge to zero; reward peaks align with successful grasps/search.
+   * Joint commands respect safety clamps; gradients remain bounded.
+   * Context slices corresponding to reward states show elevated gains once adaptive gating is available.
+   * Logs capture clear transitions between exploration (high entropy) and exploitation (high reward).
 
-**E3 — Context priors (CP/CF)**
-
-* Toggle metronome / object-switch bits.
-* Metric: ablation Δentropy with/without context.
-
-**E4 — 2.5D facet reconstruction**
-
-* Predict facet at top-k phases, compare to depth/mesh render.
-* Metrics: depth L1 / PSNR, optional Chamfer, normal cosine.
-
-**E5 — Object switches**
-
-* Random switch events; verify loop-closure behaviour & gating.
-
-Each experiment is targeted to be a <30-line config; the executable script will live under `examples/ycb_minimal.py` once the environment stub is replaced with a working orbit simulator.
+Each scenario is expressed as a compact experiment config (target <30 lines). The Examiner configuration doubles as the default example runner in `examples/`, while Explorer/Goalseeker configs stay dormant until their respective modules mature.
 
 ---
 
