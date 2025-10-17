@@ -4,9 +4,9 @@ A compact spike-driven representation (SDR) cortical column loop built around th
 
 ## 📘 Blueprints & References
 
-- [System Blueprint](docs/design.md)
-- [Packet Contracts](docs/packets.md)
-- [Coding Paradigm](docs/style.md)
+- [System Blueprint](docs/design/design.md)
+- [Packet Contracts](docs/design/packets.md)
+- [Coding Paradigm](docs/design/style.md)
 
 ## 🚀 Quickstart
 
