@@ -1,6 +1,7 @@
 # SDR Minimal Loop
 
-A compact spike-driven representation (SDR) cortical column loop built around the YCB-Habitat environment. The codebase focuses on explicit packet contracts, small interchangeable modules, and schema-validated message passing. Start with the blueprints below for the full architectural intent in this repository.
+A cognitive control loop modelled aftercortical columns using Sparse Distributed Representations, built around the YCB-Habitat environment. The codebase focuses on explicit packet contracts, small interchangeable modules, and schema-validated message passing. Start with the blueprints below for the full architectural intent in this repository.
+
 
 ## 📘 Blueprints & References
 
