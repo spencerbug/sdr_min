@@ -1,12 +1,19 @@
-# Issue tracking for remaining work to get to a functional Examiner demo.
+# Examiner Demo Progress
 
-1. **Formalize context gating fallback for the Examiner loop.** Implement a tiny `context_gates` helper that returns an all-ones vector, wire it through `ColumnSystem`/`run_loop`, and add a unit test so the launch build defaults to static gates.
-2. **Add a dedicated Examiner runner script under `examples/`.** Create `examples/examiner_minimal.py` (or similar) that instantiates `LoopConfig` for a single column, runs ~100 steps, and prints the summary so collaborators have a one-command demo.
-3. **Update docs and README with the runner workflow.** Document how to invoke the new example, clarify the static-gate assumption, and surface any required config knobs for the first public demo.
-4. **Adopt the shared configuration schema.** Ensure the runner consumes `EnvConfig` via `EnvConfig.from_dict`, document the examiner defaults alongside the schema in `ENVIRONMENT.md`, and provide a sample JSON/YAML config that mirrors the documented fields.
-5. **Expose Habitat toggle in the runner.** Add a config/CLI flag so the runner instantiates either the stub adapter or the Habitat adapter based on user choice (stub remains default).
-6. **Provision a black void Habitat scene with origin-loaded objects.** Use `scripts/generate_void_scene.py` to emit `assets/scenes/examiner/void_black.glb`, ensure the adapter drops YCB meshes at the origin table pose, and document the expected asset layout.
-7. **Implement the Habitat-backed Examiner adapter.** Replace the stub path with a Habitat-Sim implementation that initialises sensors, renders RGB-D patches from the void scene, emits pose/context packets, and respects the documented orbit controls.
-8. **Pipe step metrics to lightweight logs.** Capture entropy, peakiness, and action counts each tick (CSV/JSONL) so we can compare runs and debug without attaching a debugger.
-9. **Dump sample facet reconstructions for inspection.** Save the top shared facet predictions (e.g., as PNG/NPZ) after each run to validate that facet plumbing works end-to-end.
-10. **Add an integration test around the example runner.** Extend the smoke suite with a pytest that executes the example for a short horizon and asserts deterministic summary stats/log artifacts for both stub and Habitat modes (skipping Habitat when assets are unavailable).
+Use this list to track outstanding work for a fully featured Examiner demo. Items checked off are already implemented on `master`.
+
+## ✅ Completed
+
+- [x] Ship a static `ContextGates` helper so the Examiner loop defaults to all-ones gains.
+- [x] Provide `examples/examiner_minimal.py` as the one-command demo runner.
+- [x] Refresh README/docs with the examiner workflow and backend toggle.
+- [x] Unify runner wiring on the shared `EnvConfig` schema and document the defaults.
+- [x] Expose a `--backend` flag on the runner so stub vs Habitat can be selected at launch.
+- [x] Add helper scripts to download YCB assets and generate the black void scene.
+- [x] Implement the Habitat-backed Examiner adapter with Habitat-Sim orbit control and packet emission.
+
+## ⏳ Remaining
+
+1. **Pipe step metrics to lightweight logs.** Capture entropy, peakiness, and action counts each tick (CSV/JSONL) so runs can be compared without a debugger.
+2. **Dump sample facet reconstructions for inspection.** Save the top shared facet predictions (e.g., PNG/NPZ) after each run to validate facet plumbing end-to-end.
+3. **Add an integration test around the example runner.** Extend the smoke suite with a pytest that executes the example for a short horizon and asserts deterministic summary stats/log artefacts (skip Habitat when assets are unavailable).

@@ -4,7 +4,7 @@
 
 ## Column-Centric Action Model
 
-Policies consume the `BeliefPacket` and operate **per column**. Each column maintains its own 2D motor chart, utility field, and entropy estimate; shared behaviour emerges by weighting the columns with entropy-derived gains and the adaptive context gates described in `DESIGN.md`.
+Policies consume the `BeliefPacket` and operate **per column**. Each column maintains its own 2D motor chart, utility field, and entropy estimate; shared behaviour emerges by weighting the columns with entropy-derived gains and the adaptive context gates described in this design blueprint.
 
 Key ingredients shared across scenarios:
 

@@ -34,8 +34,8 @@ This document describes the style and principles for writing software in this re
   tests/           # unit tests, golden snapshots
   docs/            # README, PACKETS.md, DESIGN.md
   ```
-  > Current status: `examples/` is reserved for the upcoming `ycb_minimal.py` loop; until it lands, `main.py` + `tests/test_loop_smoke.py` act as the executable reference.
-* One **golden-path example** showing end-to-end loop must always work (`python examples/minimal_loop.py`).
+  > Current status: `examples/examiner_minimal.py` provides the stubbed golden path; keep it under 200 lines so collaborators can scan the entire loop quickly.
+* One **golden-path example** showing end-to-end loop must always work (`python examples/examiner_minimal.py`).
 
 ---
 

@@ -21,19 +21,32 @@ The design is minimal: explicit packets, product-of-experts logits, Hebbian maps
 
 ```
 sdr_min/
-   core/
-      assoc.py            # sparse Hebbian maps + row-Top-K pruning
-      belief.py           # BeliefPacket helpers (entropy, peakiness, top-k)
-      consensus.py        # entropy-weighted product-of-experts fusion
-      context.py          # context SDR plumbing (stub)
-      encoders.py         # SDR encoders + prototype bank stubs
-      env_ycb.py          # Habitat-lite environment surface (stub)
-      facet.py            # counterfactual facet synthesizer stub
-      fusion.py           # column-level fusion helpers
-      loop.py             # orchestrates environment ↔ SDR ↔ policy (WIP)
-      phase.py            # path-integration helpers (stub)
-      policy.py           # random policy stub emitting ActionMessage
-      sensor.py           # patch → feature vector adapter
+   README.md
+   environment.yml
+   main.py                     # config-aware CLI entry point
+   examples/
+      examiner_minimal.py      # stub-backed Examiner loop with backend flag
+   scripts/
+      check_habitat.py         # diagnostics for Habitat installs
+      download_ycb.py          # asset helper
+      generate_void_scene.py   # emits default examiner GLB
+   src/
+      core/
+         assoc.py              # sparse Hebbian maps + row-Top-K pruning
+         belief.py             # BeliefPacket helpers (entropy, peakiness, top-k)
+         column.py             # per-column wiring + config
+         consensus.py          # entropy-weighted product-of-experts fusion
+         context.py            # context SDR plumbing (stub)
+         encoders.py           # SDR encoders + prototype bank stubs
+         env_ycb.py            # EnvConfig schema + stub YCB adapter
+         facet.py              # counterfactual facet synthesizer stub
+         fusion.py             # column-level fusion helpers
+         loop.py               # orchestrates environment ↔ SDR ↔ policy
+         phase.py              # path-integration helpers (stub)
+         policy.py             # random policy stub emitting ActionMessage
+         sensor.py             # patch → feature vector adapter
+      utils/
+         packets.py            # packet validation harness
    contracts/
       action.schema.json
       belief.schema.json
@@ -43,13 +56,16 @@ sdr_min/
       observation.schema.json
       pose.schema.json
    docs/
-      DESIGN.md           # this blueprint
-      ENVIRONMENT.md      # environment wiring notes
-      PACKETS.md          # packet examples + schema pointers
-      POLICY.md           # policy modes (current + planned)
-      STYLE.md            # coding/style paradigm
-   examples/              # (planned) minimal end-to-end loop scripts
-   main.py               # tiny entry point / smoke harness
+      design/
+         design.md             # this blueprint
+         environment.md        # environment wiring notes
+         policy.md             # policy modes (current + planned)
+         style.md              # coding/style paradigm
+      experiments/
+         examiner.md           # end-to-end recipe for the Examiner loop
+      issues/
+         examiner_demo.md      # outstanding tasks for the demo
+      packets.md               # packet examples + schema pointers
    tests/
       test_assoc_hebbian.py
       test_consensus_ctx.py
@@ -76,7 +92,7 @@ sdr_min/
 ### Context SDRs
 
 * Dim. $C$, $k_c \approx 0.02C$ active; $c_{\text{SDR}}\in\{0,1\}^C$.
-* Sources vary by scenario (see `ENVIRONMENT.md` §6): Examiner carries morphological/non-morphological descriptors + switch pulse, Explorer adds head-direction, motion-rate, intent, and metronome bits, while Goalseeker further appends reward-state encodings.
+* Sources vary by scenario (see `environment.md` §6): Examiner carries morphological/non-morphological descriptors + switch pulse, Explorer adds head-direction, motion-rate, intent, and metronome bits, while Goalseeker further appends reward-state encodings.
 
 ---
 
@@ -238,6 +254,8 @@ Feedback and cross-column projections (e.g. $A_{PF}, A_{FF}$) are left as planne
 * **Pose:** previous and current $(u,v)$ to derive $\mathbf{v}_t$.
 * **Facet supervision:** (a) GT local surface from mesh render or depth; (b) predicted counterfactual facet from SDR completion; compare via 2.5D losses.
 
+`EnvConfig.backend` selects between the packet-generating stub (`"stub"`, current default) and the forthcoming Habitat-Sim bridge (`"habitat"`). The surrounding loop code is backend-agnostic as long as packet contracts remain stable.
+
 **Loop (single episode)**
 
 ```
@@ -362,57 +380,28 @@ All contracts get JSON Schema with minimal required fields and enums.
 ```
 cfg = load_config()
 rng = np.random.default_rng(cfg.seed)
-env = YCBEnv(cfg.env)
-sensor = Sensor(cfg.sensor)
-encoders = Encoders(cfg.encoder)
-assoc = AssociativeMaps(cfg.assoc, rng)
-consensus = ConsensusSystem(cfg.consensus)
-facet_sys = FacetSynthesizer(cfg.facet, validator)
+validator = PacketValidator()
+env = YCBHabitatAdapter(cfg.env, validator, rng)
+context_encoder = ContextEncoder(cfg.context, validator)
+columns = ColumnSystem(cfg.column, cfg.context, validator, rng)
 policy = RandomPolicy(cfg.policy, validator, rng)
 
-state = env.reset()
-prev_phase = {column_id: [] for column_id in env.columns}
+observation, pose, raw_context = env.reset()
 
 for step in range(cfg.steps):
-   obs, ctx, pose = env.observe()
-   features = sensor.to_features(obs)
-   context_sdr = encoders.context(ctx)
-   G_c = context_gates.update(context_sdr, belief_entropy=None)
-   # Examiner demo fallback: replace with G_c = ones_like(context_sdr) until adaptive gates ship
+   context_packet = context_encoder.encode(raw_context)
+   column_result = columns.step(observation, pose, context_packet)
+   belief_packet = column_result.belief_packet
 
-   column_logits = {}
-   column_packets = {}
+   action_packet = policy.act(belief_packet)
+   observation, pose, raw_context = env.step(action_packet)
+   # Optional: inspect facet_records for reconstruction metrics
+   # or persist belief_packet statistics for downstream analysis.
 
-   for column_id, x_c in features.items():
-      f_sdr = encoders.feature(column_id, x_c)
-      g_prior = assoc.phase_from_prior(prev_phase[column_id])
-      g_feat = assoc.phase_from_features(f_sdr)
-      scaled_ctx = scale_context(G_c, context_sdr["indices"])
-      g_ctx = assoc.phase_from_context(scaled_ctx)
-      g_post = α*g_prior + β*g_feat + βc*g_ctx
-      g_sdr = topk_g(g_post)
-
-      assoc.update(g_sdr, f_sdr, scaled_ctx)
-      prev_phase[column_id] = g_sdr
-
-      column_logits[column_id] = g_post
-      column_packets[column_id] = {
-         "g_post_logits": handle("float32", (cfg.assoc.phase_dim,), storage_handle()),
-         "g_sdr": make_sparse(g_sdr, cfg.assoc.phase_dim),
-         "f_sdr": make_sparse(f_sdr, cfg.assoc.feature_dim),
-      }
-
-   g_star_logits, weights = consensus.fuse(column_logits)
-   belief = make_belief_packet(g_star_logits, column_packets, context_sdr, weights)
-
-   facet_records = facet_sys.predict(belief["g_star_sdr"]["indices"], obs)
-   action = policy.act(belief)
-   state = env.step(action)
-
-   [log_eval(step, belief, facet_records)]
+return summarise_metrics()
 ```
 
-`examples/` will host an executable counterpart of this loop once the environment moves past the stub stage. For now `tests/test_loop_smoke.py` plus `main.py` provide the runnable contract.
+`examples/examiner_minimal.py` mirrors this wiring for the stub backend and prints a JSON summary. `main.py` remains the config-driven entry point used by tests such as `tests/test_loop_smoke.py`.
 
 `handle`, `make_sparse`, the placeholder `storage_handle()`, and the helper stubs `context_gates.update`, `scale_context`, `scaled_context_indices` align with utilities planned for `fusion.py`/`belief.py`.
 

@@ -7,11 +7,13 @@
 Minimal YCB-Habitat wrapper for SDR experiments.
 Goals: deterministic packets, tiny API surface, and fast iteration. No external framework glue is assumed.
 
+**Current status:** the codebase currently exposes a packet-generating stub inside `src/core/env_ycb.py`. Keep `EnvConfig.backend="stub"` (the default) to exercise the loop today and switch to `"habitat"` once the simulator adapter lands.
+
 ---
 
 ## 1) Scope & Scenarios
 
-Supported scenarios (see `POLICY.md` for policies):
+Supported scenarios (see `policy.md` for policies):
 
 * **Examiner** — single YCB object; camera explores by pan/tilt on a 2D chart; may jump views or switch to a new object.
 * **Explorer** — small world with multiple objects; agent navigates continuously (position/orientation) and optionally zooms.
@@ -57,7 +59,7 @@ Per step and per column:
 
 1. **Render** a crop/patch (RGB, Depth, optional Normals/Segmentation) from Habitat at the current camera pose.
 2. **Normalize** (e.g., grayscale + unit-range).
-3. **Emit** `ObservationPacket`, `ContextPacket`, `PosePacket` (see `PACKETS.md`).
+3. **Emit** `ObservationPacket`, `ContextPacket`, `PosePacket` (see `packets.md`).
 4. **Sensor adapter** converts patch → feature tensor $x_t$ (kept thin; SDR encoding happens in `encoders.py`).
 
 **Patch sampling:** For orbits, crop the object within a tight FOV; for Explorer, use first-person camera with fixed intrinsics (recorded in `global_meta.camera_intr`).
@@ -88,7 +90,7 @@ Each column owns a 2D allocentric phase and a matched 2D motor command. Policies
 * **Explorer** — extends Examiner bits with **head direction bins**, **motion rate** (fast/slow), **intent** toggles (“explore vs examine”), and a multi-rate **metronome** clock to coordinate multi-column behaviour.
 * **Goalseeker** *(planned)* — includes all Explorer signals plus a compact **reward state** encoding (recent reward sign/magnitude, goal progress buckets).
 
-All indices are stable and documented; `PACKETS.md` defines a canonical length `C` and source index ranges.
+All indices are stable and documented; `packets.md` defines a canonical length `C` and source index ranges.
 
 ---
 
