@@ -24,6 +24,7 @@ def _as_tuple(sequence: Sequence[Any]) -> tuple[Any, ...]:
 def _load_config(path: Path) -> LoopConfig:
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
+    env_payload = payload.get("env", {})
     column_payload = payload.get("column", {})
     fusion_payload = column_payload.get("fusion", {})
     consensus_payload = column_payload.get("consensus", {})
@@ -32,13 +33,7 @@ def _load_config(path: Path) -> LoopConfig:
     return LoopConfig(
         steps=int(payload.get("steps", 10)),
         seed=int(payload.get("seed", 0)),
-        env=EnvConfig(
-            patch_shape=_as_tuple(payload.get("env", {}).get("patch_shape", (64, 64, 4))),
-            context_length=int(payload.get("env", {}).get("context_length", 1024)),
-            dt=float(payload.get("env", {}).get("dt", 0.05)),
-            columns=_as_tuple(payload.get("env", {}).get("columns", ("col0",))),
-            objects=_as_tuple(payload.get("env", {}).get("objects", ("stub_object", "alt_object"))),
-        ),
+        env=EnvConfig.from_dict(env_payload),
         context=ContextConfig(
             length=int(payload.get("context", {}).get("length", 1024)),
             sources=_as_tuple(payload.get("context", {}).get("sources", ("metronome", "switch", "intent"))),

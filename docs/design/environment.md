@@ -24,8 +24,9 @@ This doc focuses on **Examiner** (MVP) and **Explorer** (continuous navigation).
 ## 2) Dependencies & Assets
 
 * **Habitat-Sim** (headless-capable) + minimal bindings.
-* **YCB Object Models** (subset): meshes + textures stored at `assets/ycb/`.
-* Optional room shells / table props for Explorer at `assets/scenes/miniworld/`.
+* **YCB Object Models** (subset): meshes + textures stored under `assets/ycb/` (one directory per object id).
+* **Examiner scene shell**: minimal black void GLB at `assets/scenes/examiner/void_black.glb`.
+* **Explorer scenes**: Matterport3D GLBs rooted at `assets/scenes/mp3d/`. Default scene id: `17DRP5sb8fy/17DRP5sb8fy.glb`.
 
 Version pinning recommended in your container or `requirements.txt`. Use asset indices as stable IDs.
 
@@ -141,6 +142,8 @@ with `wrap(d) = ((d + 0.5) \bmod 1.0) - 0.5`.
 
 **Rendering:** small RGB-D patch; optional normals from G-buffer.
 
+**Environment:** default scene is the `void_black.glb` shell positioned at the origin with a single YCB object resting on an invisible table plane. Lighting is neutral to emphasise object albedo.
+
 **Evaluation hooks:** facet depth/normal ground-truth extracted at the same pose for reconstruction loss/eval.
 
 ---
@@ -160,6 +163,8 @@ with `wrap(d) = ((d + 0.5) \bmod 1.0) - 0.5`.
 
 **Safety:** physics/collision queries enforce step feasibility; clamp with informative `info` flags (used by policy cost).
 
+**Environment:** defaults to the Matterport3D home layout `17DRP5sb8fy` located at `assets/scenes/mp3d/17DRP5sb8fy/17DRP5sb8fy.glb`. Replace the GLB path in `AssetConfig.explorer_scene` to target alternative scans.
+
 **Chart coupling:** if your SDR columns expect 2D phases, define a **chart-of-interest** (e.g., object-centric $u,v$ inferred from current gaze ray) and expose it in `PosePacket` alongside full SE(3).
 
 ---
@@ -175,25 +180,39 @@ Use whichever matches your `facet.py` decoder’s coordinate frame; record which
 
 ---
 
-## 11) Configuration (minimal)
+## 11) Configuration Schema
 
-```python
-EnvConfig(
-  scenario="examiner",            # "explorer"
-  step_size=0.05,                 # chart delta scale (Examiner)
-  orbit_r=0.6, phi_min=-0.6, phi_max=0.6,
-  camera_intr=Intrinsics(fx, fy, cx, cy),
-  patch_hw=(64, 64),
-  modalities=["rgb","depth"],
-  ycb_root="assets/ycb/",
-  scene_root="assets/scenes/",
-  objects=["003_cracker_box","005_tomato_soup_can", ...],
-  switch_prob=0.0,                # Examiner: optional spontaneous switch
-  seed=42
-)
-```
+`EnvConfig` encapsulates all environment-facing parameters. It is a dataclass composed of four nested helpers and is shared by the stub adapter and the future Habitat-backed implementation. The parser lives in `src/core/env_ycb.py` (`EnvConfig.from_dict(...)`) and enforces the following schema:
 
-All values are explicit and serializable; no magic globals.
+* **Top-level (`EnvConfig`)**
+  * `scenario`: `"examiner"` or `"explorer"`. Controls orbit vs navigation semantics.
+  * `backend`: `"stub"` or `"habitat"`. Selects between the packet stub and real simulator.
+  * `columns`: tuple of column identifiers (default `("col0",)`).
+  * `context_length`: positive integer; drives context encoder shape (default `1024`).
+  * `dt`: fixed step duration in seconds (default `0.05`).
+  * `objects`: tuple of YCB object ids (default `("003_cracker_box", "005_tomato_soup_can", "006_mustard_bottle")`).
+  * `patch_shape`: optional `(H, W, C)` override. If omitted, derived from `sensor.resolution + sensor.modalities`.
+* **`SensorConfig`**
+  * `resolution`: `(height, width)` tuple; defaults to `(64, 64)` for the stub.
+  * `modalities`: tuple of strings (e.g. `("rgb", "depth")`). Controls channel count and Habitat sensor attachments.
+  * `hfov`: horizontal field of view in degrees (default `70.0`).
+  * `near` / `far`: clipping planes in metres; require `0 < near < far`.
+* **`OrbitConfig`** (Examiner)
+  * `radius`: camera-object distance in metres (default `0.6`).
+  * `min_elevation` / `max_elevation`: allowable vertical angles (defaults `-0.55`, `0.65` radians).
+  * `jitter`: stochastic perturbation applied on reset (default `0.0`).
+  * `default_speed`: chart velocity scale used when policies emit unit actions (default `0.05`).
+* **`PhysicsConfig`**
+  * `enable_physics`: toggles Habitat physics engine (default `False` for Examiner).
+  * `enable_sliding`: when physics is active, allow slide resolution instead of hard stops (default `True`).
+  * `lock_object`: keep the target object frozen in place (default `True`).
+* **`AssetConfig`**
+  * `ycb_root`: filesystem path containing YCB object assets (default `assets/ycb`).
+  * `scene_root`: root directory for static scenes (default `assets/scenes`).
+  * `examiner_scene`: GLB relative to `scene_root` used for Examiner (`examiner/void_black.glb`).
+  * `explorer_scene`: GLB relative to `scene_root` for Explorer (`mp3d/17DRP5sb8fy/17DRP5sb8fy.glb`).
+
+`EnvConfig.from_dict` accepts plain dictionaries (JSON/YAML payloads) and returns a validated config instance. All numeric values are coerced to floats/ints, sequences are converted to tuples, and invalid combinations raise `ValueError` with descriptive messages.
 
 ---
 

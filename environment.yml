@@ -1,6 +1,8 @@
 name: sdr-loop
 channels:
   - aihabitat
+  - pytorch
+  - nvidia
   - conda-forge
 dependencies:
   - python=3.9.*
@@ -10,5 +12,11 @@ dependencies:
   - pytest
   - matplotlib
   - ipykernel
+  - habitat-sim=0.3.3
+  - pytorch=2.3.*
+  - pytorch-cuda=11.8
   - pip
-  - habitat-sim
+  - pip:
+    - habitat-lab==0.3.320250127
+    - huggingface-hub>=0.24,<1.0
+    - pygltflib>=1.16

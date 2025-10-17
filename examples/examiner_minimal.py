@@ -22,25 +22,29 @@ if str(REPO_ROOT) not in sys.path:
 from src.core.column import ColumnConfig
 from src.core.consensus import ConsensusConfig
 from src.core.encoders import ContextConfig
-from src.core.env_ycb import EnvConfig
+from src.core.env_ycb import AssetConfig, EnvConfig, OrbitConfig, SensorConfig
 from src.core.facet import FacetConfig
 from src.core.fusion import FusionConfig
 from src.core.loop import LoopConfig, run_loop
 from src.core.policy import PolicyConfig
 
 
-def build_examiner_config(steps: int = 120, seed: int = 7) -> LoopConfig:
+def build_examiner_config(steps: int = 120, seed: int = 7, backend: str = "stub") -> LoopConfig:
     """Construct a loop configuration tailored to the Examiner scenario."""
 
     return LoopConfig(
         steps=steps,
         seed=seed,
         env=EnvConfig(
-            patch_shape=(64, 64, 4),
-            context_length=1024,
-            dt=0.05,
+            backend=backend,
             columns=("col0",),
-            objects=("stub_object", "alt_object"),
+            context_length=1024,
+            sensor=SensorConfig(resolution=(64, 64), modalities=("rgb", "depth")),
+            orbit=OrbitConfig(radius=0.6, min_elevation=-0.6, max_elevation=0.6),
+            assets=AssetConfig(
+                examiner_scene="examiner/void_black.glb",
+                explorer_scene="mp3d/17DRP5sb8fy/17DRP5sb8fy.glb",
+            ),
         ),
         context=ContextConfig(length=1024, sources=("metronome", "switch", "intent")),
         column=ColumnConfig(
@@ -60,9 +64,15 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     parser = argparse.ArgumentParser(description="Run the Examiner minimal loop demo.")
     parser.add_argument("--steps", type=int, default=120, help="Number of steps to simulate (default: 120)")
     parser.add_argument("--seed", type=int, default=7, help="RNG seed for reproducibility (default: 7)")
+    parser.add_argument(
+        "--backend",
+        choices=("stub", "habitat"),
+        default="stub",
+        help="Environment backend to use (default: stub)",
+    )
     args = parser.parse_args(argv)
 
-    config = build_examiner_config(steps=args.steps, seed=args.seed)
+    config = build_examiner_config(steps=args.steps, seed=args.seed, backend=args.backend)
     summary = run_loop(config)
     print(json.dumps(summary, indent=2))
     return summary

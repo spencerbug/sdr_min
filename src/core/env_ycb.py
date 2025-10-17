@@ -3,27 +3,231 @@
 The real implementation will call Habitat-Sim. For now, the adapter
 creates structurally correct packets so the loop, validators, and tests
 exercise the contracts end-to-end.
+
+This module also defines configuration dataclasses that describe the
+Habitat-backed environment surface. The schema is consumed by both the
+stub adapter and the forthcoming Habitat integration to ensure
+consistent defaults and validation.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 import numpy as np
 
 from ..utils import PacketValidator
 
 
+def _as_tuple(sequence: Sequence[Any] | Any, *, item_cast=None) -> Tuple[Any, ...]:
+    if isinstance(sequence, (str, bytes)):
+        sequence = (sequence,)
+    items: List[Any] = []
+    for value in sequence:  # type: ignore[arg-type]
+        if item_cast is not None:
+            value = item_cast(value)
+        items.append(value)
+    return tuple(items)
+
+
+@dataclass
+class SensorConfig:
+    """Describes a single pinhole sensor attached to the Habitat agent."""
+
+    resolution: Tuple[int, int] = (64, 64)
+    modalities: Tuple[str, ...] = ("rgb", "depth")
+    hfov: float = 70.0
+    near: float = 0.1
+    far: float = 5.0
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> SensorConfig:
+        return cls(
+            resolution=_as_tuple(payload.get("resolution", (64, 64)), item_cast=int),
+            modalities=_as_tuple(payload.get("modalities", ("rgb", "depth")), item_cast=str),
+            hfov=float(payload.get("hfov", 70.0)),
+            near=float(payload.get("near", 0.1)),
+            far=float(payload.get("far", 5.0)),
+        )
+
+    def validate(self) -> None:
+        if len(self.resolution) != 2 or any(dim <= 0 for dim in self.resolution):
+            raise ValueError("sensor.resolution must be a (H, W) tuple with positive entries")
+        if self.near <= 0 or self.far <= self.near:
+            raise ValueError("sensor clipping planes must satisfy 0 < near < far")
+        if not self.modalities:
+            raise ValueError("sensor.modalities must declare at least one modality")
+
+
+@dataclass
+class OrbitConfig:
+    """Defines the orbit used by the Examiner scenario."""
+
+    radius: float = 0.6
+    min_elevation: float = -0.55
+    max_elevation: float = 0.65
+    jitter: float = 0.0
+    default_speed: float = 0.05
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> OrbitConfig:
+        return cls(
+            radius=float(payload.get("radius", 0.6)),
+            min_elevation=float(payload.get("min_elevation", -0.55)),
+            max_elevation=float(payload.get("max_elevation", 0.65)),
+            jitter=float(payload.get("jitter", 0.0)),
+            default_speed=float(payload.get("default_speed", 0.05)),
+        )
+
+    def validate(self) -> None:
+        if self.radius <= 0:
+            raise ValueError("orbit.radius must be positive")
+        if self.max_elevation <= self.min_elevation:
+            raise ValueError("orbit.max_elevation must exceed orbit.min_elevation")
+        if self.default_speed <= 0:
+            raise ValueError("orbit.default_speed must be positive")
+
+
+@dataclass
+class PhysicsConfig:
+    """Lightweight toggles for Habitat physics simulation."""
+
+    enable_physics: bool = False
+    enable_sliding: bool = True
+    lock_object: bool = True
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> PhysicsConfig:
+        return cls(
+            enable_physics=bool(payload.get("enable_physics", False)),
+            enable_sliding=bool(payload.get("enable_sliding", True)),
+            lock_object=bool(payload.get("lock_object", True)),
+        )
+
+    def validate(self) -> None:
+        # No numerical relationships to check yet; placeholder for future invariants.
+        return
+
+
+@dataclass
+class AssetConfig:
+    """Filesystem layout for Habitat assets."""
+
+    ycb_root: Path = Path("assets/ycb")
+    scene_root: Path = Path("assets/scenes")
+    examiner_scene: str = "examiner/void_black.glb"
+    explorer_scene: str = "mp3d/17DRP5sb8fy/17DRP5sb8fy.glb"
+
+    def __post_init__(self) -> None:
+        self.ycb_root = Path(self.ycb_root)
+        self.scene_root = Path(self.scene_root)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> AssetConfig:
+        return cls(
+            ycb_root=Path(payload.get("ycb_root", "assets/ycb")),
+            scene_root=Path(payload.get("scene_root", "assets/scenes")),
+            examiner_scene=str(payload.get("examiner_scene", "examiner/void_black.glb")),
+            explorer_scene=str(payload.get("explorer_scene", "mp3d/17DRP5sb8fy/17DRP5sb8fy.glb")),
+        )
+
+    def validate(self) -> None:
+        if not self.examiner_scene:
+            raise ValueError("assets.examiner_scene must reference a GLB relative to scene_root")
+        if not self.explorer_scene:
+            raise ValueError("assets.explorer_scene must reference a GLB relative to scene_root")
+
+
+DEFAULT_OBJECTS: Tuple[str, ...] = (
+    "003_cracker_box",
+    "005_tomato_soup_can",
+    "006_mustard_bottle",
+)
+
+
 @dataclass
 class EnvConfig:
-    """Configuration subset required by the stub environment."""
+    """Shared configuration for the stub and real Habitat adapters."""
 
-    patch_shape: Tuple[int, int, int] = (64, 64, 4)
+    scenario: str = "examiner"
+    backend: str = "stub"
+    columns: Tuple[str, ...] = ("col0",)
     context_length: int = 1024
     dt: float = 0.05
-    columns: Tuple[str, ...] = ("col0",)
-    objects: Tuple[str, ...] = ("stub_object", "alt_object")
+    objects: Tuple[str, ...] = DEFAULT_OBJECTS
+    patch_shape: Tuple[int, int, int] | None = None
+    sensor: SensorConfig = field(default_factory=SensorConfig)
+    orbit: OrbitConfig = field(default_factory=OrbitConfig)
+    physics: PhysicsConfig = field(default_factory=PhysicsConfig)
+    assets: AssetConfig = field(default_factory=AssetConfig)
+
+    def __post_init__(self) -> None:
+        self.columns = _as_tuple(self.columns, item_cast=str)
+        self.objects = _as_tuple(self.objects, item_cast=str)
+        if self.patch_shape is None:
+            channels = len(self.sensor.modalities)
+            self.patch_shape = (
+                int(self.sensor.resolution[0]),
+                int(self.sensor.resolution[1]),
+                int(channels),
+            )
+        self.validate()
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> EnvConfig:
+        sensor_cfg = SensorConfig.from_dict(payload.get("sensor", {}))
+        orbit_cfg = OrbitConfig.from_dict(payload.get("orbit", {}))
+        physics_cfg = PhysicsConfig.from_dict(payload.get("physics", {}))
+        assets_cfg = AssetConfig.from_dict(payload.get("assets", {}))
+
+        patch_shape_payload = payload.get("patch_shape")
+        patch_shape: Tuple[int, int, int] | None
+        if patch_shape_payload is None:
+            patch_shape = None
+        else:
+            if isinstance(patch_shape_payload, Sequence):
+                patch_shape = _as_tuple(patch_shape_payload, item_cast=int)  # type: ignore[assignment]
+            else:
+                raise TypeError("env.patch_shape must be a sequence if provided")
+
+        return cls(
+            scenario=str(payload.get("scenario", "examiner")),
+            backend=str(payload.get("backend", "stub")),
+            columns=_as_tuple(payload.get("columns", ("col0",)), item_cast=str),
+            context_length=int(payload.get("context_length", 1024)),
+            dt=float(payload.get("dt", 0.05)),
+            objects=_as_tuple(payload.get("objects", DEFAULT_OBJECTS), item_cast=str),
+            patch_shape=patch_shape,
+            sensor=sensor_cfg,
+            orbit=orbit_cfg,
+            physics=physics_cfg,
+            assets=assets_cfg,
+        )
+
+    def validate(self) -> None:
+        if self.scenario not in {"examiner", "explorer"}:
+            raise ValueError("env.scenario must be 'examiner' or 'explorer'")
+        if self.backend not in {"stub", "habitat"}:
+            raise ValueError("env.backend must be 'stub' or 'habitat'")
+        if not self.columns:
+            raise ValueError("env.columns must list at least one column id")
+        if self.context_length <= 0:
+            raise ValueError("env.context_length must be positive")
+        if self.dt <= 0:
+            raise ValueError("env.dt must be positive")
+        if not self.objects:
+            raise ValueError("env.objects must include at least one YCB object id")
+        if self.patch_shape is None:
+            raise ValueError("env.patch_shape cannot be None after initialization")
+        if len(self.patch_shape) != 3 or any(dim <= 0 for dim in self.patch_shape):
+            raise ValueError("env.patch_shape must be a (H, W, C) tuple with positive entries")
+
+        self.sensor.validate()
+        self.orbit.validate()
+        self.physics.validate()
+        self.assets.validate()
 
 
 class YCBHabitatAdapter:
@@ -87,7 +291,7 @@ class YCBHabitatAdapter:
                         "shape": list(self._config.patch_shape),
                         "storage": f"shm://obs/{column_id}/{self._tick:06d}"
                     },
-                    "channels": ["rgb", "depth"],
+                    "channels": list(self._config.sensor.modalities),
                     "egopose": {
                         "u": u,
                         "v": v,
@@ -143,9 +347,10 @@ class YCBHabitatAdapter:
         if action_type == "move":
             dx = float(params.get("dx", 0.0))
             dy = float(params.get("dy", 0.0))
+            speed = float(self._config.orbit.default_speed)
             for column_id, (u, v) in self._pose.items():
                 self._pose_prev[column_id] = (u, v)
-                self._pose[column_id] = ((u + dx) % 1.0, (v + dy) % 1.0)
+                self._pose[column_id] = ((u + speed * dx) % 1.0, (v + speed * dy) % 1.0)
         elif action_type == "jump_to":
             target_u = float(params.get("u", self._rng.random()))
             target_v = float(params.get("v", self._rng.random()))
